@@ -1,0 +1,195 @@
+#!/usr/bin/python3
+import sys
+import select
+import argparse
+import getpass
+
+from pdfhide import logger
+from pdfhide import pdf_algo
+
+#
+#
+#
+# PDF HIDE
+#
+
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see [http://www.gnu.org/licenses/].
+#
+# Copyright (C) 2013 Nicolas Canceill
+#
+
+#
+# pdf_hide.py
+__version__ = "0.0"
+#
+# This is a steganographic tool for hiding data in PDF files
+#
+# Written by Nicolas Canceill
+# Last updated on Nov 10, 2013
+# Hosted at https://github.com/ncanceill/pdf_hide
+#
+
+#
+#
+#
+# SCRIPT
+#
+
+def main():
+	# CLI
+	parser = argparse.ArgumentParser(prog="pdf_hide",
+		  formatter_class=argparse.RawDescriptionHelpFormatter,
+		  description=logger.MSG_DESC,
+		  epilog=logger.MSG_LICENSE
+		  )
+	subparsers = parser.add_subparsers(title="actions",
+		  dest="action",
+		  help="action to execute"
+		  )
+	# CLI - General
+	parser.add_argument("filename",
+		  help="PDF file (may be compressed) to use as input"
+		  )
+	parser.add_argument("-o", "--output",
+		  dest="output",
+		  default="out.pdf_hide",
+		  help="use FILENAME as the output file",
+		  metavar="FILENAME"
+		  )
+	parser.add_argument("-k", "--key",
+		  dest="key",
+		  help="use KEY as the stego-key",
+		  metavar="KEY"
+		  )
+	# CLI - Embedding
+	parser_embed = subparsers.add_parser("embed",
+		  aliases=["m"],
+		  help="Embed message inside PDF file"
+		  )
+	parser_embed.add_argument("data",
+		  type=argparse.FileType("rb"),
+		  help="the data file to embed (or stdin)"
+		  )
+	parser_embed.add_argument("--no-random",
+		  action="store_true",
+		  dest="norandom",
+		  default=False,
+		  help="do not embed random values, keep original ones"
+		  )
+	# CLI - Extracting
+	parser_extract = subparsers.add_parser("extract",
+		  aliases=["x"],
+		  help="Extract message from PDF file"
+		  )
+	# CLI - Options
+	group_options = parser.add_argument_group("algorithm options",
+		  "use these options to tune the algorithm"
+		  )
+	group_options.add_argument("-n", "--nbits",
+		  action="store",
+		  dest="nbits",
+		  type=int,
+		  default=4,
+		  help="use NBITS as the number of bits to use for numerals",
+		  metavar="NBITS"
+		  )
+	group_options.add_argument("-r", "--redundancy",
+		  action="store",
+		  dest="red",
+		  type=float,
+		  default=0.1,
+		  help="use RED as the redundancy parameter (strictly between 0 and 1)",
+		  metavar="RED"
+		  )
+	parser.add_argument("-i", "--improve",
+		  action="store_true",
+		  dest="improve",
+		  default=False,
+		  help="use algo improvements"
+		  )
+	parser.add_argument("--custom-range",
+		  action="store_true",
+		  dest="customrange",
+		  default=False,
+		  help="""use data in [-450,-250] without -333 and -334
+(ignored with original algo,
+will force --no-random when embedding,
+will force NBITS to maximum 6)"""
+		  )
+	# CLI - Verbosity
+	group_verb = parser.add_mutually_exclusive_group()
+	group_verb.add_argument("-v", "--verbose",
+		  action="count",
+		  dest="verbose",
+		  default=0,
+		  help="set verbosity level"
+		  )
+	group_verb.add_argument("-q", "--quiet",
+		  action="store_const",
+		  dest="verbose",
+		  const=-1,
+		  help="force quiet output"
+		  )
+	# CLI - Version
+	group_version = parser.add_argument_group("version")
+	group_version.add_argument("--version", action="version",
+		  version=logger.MSG_VERSION
+		  )
+	args = parser.parse_args()
+	# Log
+	rl = logger.rootLogger(args.verbose)
+	# Exec
+	if args.verbose >= 0:
+		logger.print_splash()
+		if args.verbose > 0:
+			logger.print_discl()
+	if args.action == "embed" or args.action == "m":
+		if args.key == None:
+			args.key = getpass.getpass("Please enter key: ")
+		ps = pdf_algo.PDF_stego(
+			  args.filename,
+			  rl,
+			  output=args.output,
+			  improve=args.improve,
+			  red=args.red,
+			  nbits=args.nbits,
+			  customrange=args.customrange
+			  )
+		result = ps.embed(args.data.read(),args.key,norandom=args.norandom)
+		if result > 0:
+			logger.print_end()
+			exit(0)
+		exit(result)
+	elif args.action == "extract" or args.action == "x":
+		if args.key == None:
+			args.key = getpass.getpass("Please enter key: ")
+		if args.customrange:
+			args.nbits = min(args.nbits,6)
+		ps = pdf_algo.PDF_stego(
+			  args.filename,
+			  rl,
+			  output=args.output,
+			  improve=args.improve,
+			  red=args.red,
+			  nbits=args.nbits,
+			  customrange=args.customrange
+			  )
+		result = ps.extract(args.key)
+		if result == 0:
+			logger.print_end()
+		exit(result)
+
+if __name__ == '__main__':
+    main()
